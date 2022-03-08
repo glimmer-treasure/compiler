@@ -167,6 +167,7 @@ class Prog extends AstNode {
         super()
         this.stmts = stmts
     }
+    dump(prefix: string): void {}
 }
 
 /**
@@ -282,22 +283,25 @@ class Parser {
         let oldPos:number = this.tokenizer.position()
         let t:Token = this.tokenizer.next()
         if (t.kind === TokenKind.Keyword && t.text === "function") {
-            //读取"("和")"
-            let t1 = this.tokenizer.next()
-            if (t1.text === "(") {
-                let t2 = this.tokenizer.next()
-                if (t2.text === ")") {
-                    let functionBody = this.parseFunctionBody()
-                    if (FunctionBody.isFunctionBodyNode(functionBody)) {
-                        //如果解析成功，从这里返回
-                        return new FunctionDecl(t.text, functionBody)
+            t = this.tokenizer.next()
+            if (t.kind === TokenKind.Identifier) {
+                //读取"("和")"
+                let t1 = this.tokenizer.next()
+                if (t1.text === "(") {
+                    let t2 = this.tokenizer.next()
+                    if (t2.text === ")") {
+                        let functionBody = this.parseFunctionBody()
+                        if (FunctionBody.isFunctionBodyNode(functionBody)) {
+                            //如果解析成功，从这里返回
+                            return new FunctionDecl(t.text, functionBody)
+                        }
+                    } else {
+                        console.log("Expecting ')' in FunctionDecl, while we got a " + t2.text)
                     }
                 } else {
-                    console.log("Expecting ')' in FunctionDecl, while we got a " + t2.text)
+                    console.log("Expecting '(' in FunctionDecl, while we got a " + t1.text);
+                    return
                 }
-            } else {
-                console.log("Expecting '(' in FunctionDecl, while we got a " + t1.text);
-                return
             }
         }
         //如果解析不成功，回溯，返回null。
@@ -317,7 +321,7 @@ class Parser {
         if (t.text === "{") {
             let functionCall = this.parseFunctionCall()
             while(FunctionCall.isFunctionCallNode(functionCall)) {
-                stmts.push(functionCall)
+                stmts.push(functionCall as FunctionCall)
                 functionCall = this.parseFunctionCall()
             }
             t = this.tokenizer.next()
