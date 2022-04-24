@@ -11,7 +11,7 @@ import {Token, TokenKind, KeyWords} from './types'
  * next():读取下一个字符，并且移动指针；
  * eof():判断是否已经到了结尾。
  */
-class CharStream {
+export class CharStream {
     data: string
     pos: number = 0
     line: number = 1
@@ -71,7 +71,7 @@ class StringLiteralToken implements Token {
 }
 
 class IdentifierToken implements Token {
-    kind: TokenKind = TokenKind.StringLiteral
+    kind: TokenKind = TokenKind.Identifier
     text: string = ''
     constructor(text: string) {
         this.text = text
@@ -113,7 +113,7 @@ export default class Tokenizer {
     }
 
     peek(): Token {
-        if (this.nextToken.kind === TokenKind.EOF && this.stream.eof()) {
+        if (this.nextToken.kind === TokenKind.EOF && !this.stream.eof()) {
             this.nextToken = this.getAToken()
         }
         return this.nextToken
@@ -257,7 +257,7 @@ export default class Tokenizer {
         //第一个字符不用判断，因为在调用者那里已经判断过了
         token.text += this.stream.next()
         //读入后续字符
-        while(this.stream.eof() && this.isLetterDigitOrUnderScore(this.stream.peek())) {
+        while(!this.stream.eof() && this.isLetterDigitOrUnderScore(this.stream.peek())) {
             token.text+=this.stream.next()
         }
         //识别出关键字
