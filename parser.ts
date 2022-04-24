@@ -18,120 +18,9 @@
 // 词法分析
 // 本节没有提供词法分析器，直接提供了一个Token串。语法分析程序可以从Token串中依次读出
 // 一个个Token，也可以重新定位Token串的当前读取位置。
+import {TokenKind, Token, KeyWords} from './types'
+import Tokenizer, {CharStream} from './tokenizer'
 
-
-//Token的类型
-enum TokenKind {
-    Keyword,
-    Identifier,
-    StringLiteral,
-    Seperator,
-    Operator,
-    EOF
-}
-interface Token {
-    kind: TokenKind,
-    text: string
-}
-// 一个Token数组，代表了下面这段程序做完词法分析后的结果：
-/*
-//一个函数的声明，这个函数很简单，只打印"Hello World!"
-function sayHello(){
-    println("Hello World!");
-}
-//调用刚才声明的函数
-sayHello();
-*/
-let tokenArray: Token[] = [
-    {
-        kind: TokenKind.Keyword,
-        text: 'function'
-    },
-    {
-        kind: TokenKind.Identifier,
-        text: 'sayHello'
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: '('
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: ')'
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: '{'
-    },
-    {
-        kind: TokenKind.Identifier,
-        text: 'println'
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: '('
-    },
-    {
-        kind: TokenKind.StringLiteral,
-        text: 'Hello, World'
-    },
-    {
-        kind: TokenKind.StringLiteral,
-        text: ')'
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: ';'   
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: '}'
-    },
-    {
-        kind: TokenKind.Identifier,
-        text: 'sayHello'
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: '('
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: ')'
-    },
-    {
-        kind: TokenKind.Seperator,
-        text: ';'
-    },
-    {
-        kind: TokenKind.EOF,
-        text: ''
-    }
-]
-/**
- * 简化的词法分析器
- * 语法分析器从这里获取Token。
- */
-class Tokenizer {
-    private token: Token[]
-    private pos: number = 0
-    constructor(token: Token[]) {
-        this.token = token
-    }
-    next(): Token {
-        if (this.pos <= this.token.length) {
-            return this.token[this.pos++]
-        } else {
-            return this.token[this.pos]
-        }
-    }
-    position(): number {
-        return this.pos
-    }
-    traceBack(newPos: number):void {
-        this.pos = newPos
-    }
-}
 /////////////////////////////////////////////////////////////////////////
 // 语法分析
 // 包括了AST的数据结构和递归下降的语法解析程序
@@ -167,7 +56,10 @@ class Prog extends AstNode {
         super()
         this.stmts = stmts
     }
-    dump(prefix: string): void {}
+    dump(prefix: string): void {
+        console.log(`${prefix}Propg`)
+        this.stmts.forEach(stmt => stmt.dump(`${prefix}\n`))
+    }
 }
 
 /**
@@ -233,7 +125,7 @@ class FunctionCall extends Statement {
         }
     }
     public dump(prefix: string): void {
-        console.log(prefix+"FunctionCall "+this.name + (this.definition!=null ? ", resolved" : ", not resolved"));
+        console.log(`${prefix}FunctionCall ${this.name}, ${this.definition ? 'resolved' : 'not resolved'}`);
         this.parameters.forEach(x => console.log(prefix+"\t"+"Parameter: "+ x));
     }
 }
@@ -251,25 +143,22 @@ class Parser {
     parseProg():Prog {
         let stmts: Statement[] = [];
         let stmt: Statement | null | void = null;
-        while(true) { //每次循环解析一个语句
+        let token = this.tokenizer.peek()
+        while(token.kind !== TokenKind.EOF) { //每次循环解析一个语句
             //尝试一下函数声明
-            stmt = this.parseFunctionDecl()
-            if (Statement.isStatementNode(stmt)) {
-                stmts.push(stmt)
-                continue
+            if (token.kind === TokenKind.Keyword && token.text === KeyWords.Function) {
+                stmt = this.parseFunctionDecl()
+            } else if (token.kind === TokenKind.Identifier) {
+                stmt = this.parseFunctionCall()
             }
-
-            //如果前一个尝试不成功，那么再尝试一下函数调用
-            stmt = this.parseFunctionCall()
-            if (Statement.isStatementNode(stmt)) {
-                stmts.push(stmt)
-                continue
+            if (stmt !== null) {
+                stmts.push(stmt as Statement)
+                console.log("success");
+            } else {
+                //console.log("Unrecognized token: ");
+                // console.log(token);
             }
-
-            //如果都没成功，那就结束
-            if (stmt == null) {
-                break
-            }
+            token = this.tokenizer.peek()
         }
         return new Prog(stmts)
     }
@@ -279,34 +168,37 @@ class Parser {
      * 语法规则：
      * functionDecl: "function" Identifier "(" ")"  functionBody;
      */
-    parseFunctionDecl(): FunctionDecl|null|void {
-        let oldPos:number = this.tokenizer.position()
-        let t:Token = this.tokenizer.next()
-        if (t.kind === TokenKind.Keyword && t.text === "function") {
-            t = this.tokenizer.next()
-            if (t.kind === TokenKind.Identifier) {
-                //读取"("和")"
-                let t1 = this.tokenizer.next()
-                if (t1.text === "(") {
-                    let t2 = this.tokenizer.next()
-                    if (t2.text === ")") {
-                        let functionBody = this.parseFunctionBody()
-                        if (FunctionBody.isFunctionBodyNode(functionBody)) {
-                            //如果解析成功，从这里返回
-                            return new FunctionDecl(t.text, functionBody)
-                        }
+    parseFunctionDecl(): FunctionDecl|null {
+        console.log("in FunctionDecl")
+        //跳过关键字'function'
+        this.tokenizer.next()
+        let t = this.tokenizer.next()
+        if (t.kind === TokenKind.Identifier) {
+            // 读取()
+            let t1 = this.tokenizer.next()
+            if (t1.text === '(') {
+                let t2 = this.tokenizer.next()
+                if (t2.text === ')') {
+                    let functionBody = this.parseFunctionBody()
+                    if (functionBody !== null) {
+                        //如果解析成功，从这里返回
+                        return new FunctionDecl(t.text, functionBody)
                     } else {
-                        console.log("Expecting ')' in FunctionDecl, while we got a " + t2.text)
+                        console.log("Error parsing FunctionBody in FunctionDecl");
+                        return null
                     }
                 } else {
-                    console.log("Expecting '(' in FunctionDecl, while we got a " + t1.text);
-                    return
+                    console.log("Expecting ')' in FunctionDecl, while we got a " + t.text)
+                    return null
                 }
+            } else {
+                console.log("Expecting '(' in FunctionDecl, while we got a " + t.text);
+                return null
             }
+        } else {
+            console.log("Expecting a function name, while we got a " + t.text);
+            return null;
         }
-        //如果解析不成功，回溯，返回null。
-        this.tokenizer.traceBack(oldPos)
-        return null
     }
 
     /**
@@ -314,28 +206,29 @@ class Parser {
      * 语法规则：
      * functionBody : '{' functionCall* '}' ;
      */
-    parseFunctionBody(): FunctionBody|null|void {
-        let oldPos: number = this.tokenizer.position();
-        let stmts: FunctionCall[] = []
+    parseFunctionBody(): FunctionBody|null {
+        let stmts:FunctionCall[] = []
         let t: Token = this.tokenizer.next()
-        if (t.text === "{") {
-            let functionCall = this.parseFunctionCall()
-            while(FunctionCall.isFunctionCallNode(functionCall)) {
-                stmts.push(functionCall as FunctionCall)
-                functionCall = this.parseFunctionCall()
+        if (t.text === '{') {
+            while(this.tokenizer.peek().kind === TokenKind.Identifier) {
+                let functionCall = this.parseFunctionCall()
+                if (functionCall !== null) {
+                    stmts.push(functionCall)
+                } else {
+                    console.log("Error parsing a FunctionCall in FunctionBody.");
+                    return null;
+                }
             }
             t = this.tokenizer.next()
-            if (t.text === "}") {
+            if (t.text === '}') {
                 return new FunctionBody(stmts)
             } else {
                 console.log("Expecting '}' in FunctionBody, while we got a " + t.text);
-                return;
+                return null;
             }
         } else {
             console.log("Expecting '{' in FunctionBody, while we got a " + t.text);
-            //如果解析不成功，回溯，返回null。
-            this.tokenizer.traceBack(oldPos)
-            return null
+            return null;
         }
     }
 
@@ -345,44 +238,40 @@ class Parser {
      * functionCall : Identifier '(' parameterList? ')' ;
      * parameterList : StringLiteral (',' StringLiteral)* ;
      */
-    parseFunctionCall(): FunctionCall | null | void {
-        let oldPos: number = this.tokenizer.position()
+    parseFunctionCall(): FunctionCall | null {
         let params: string[] = []
-        let t: Token = this.tokenizer.next()
+        let t:Token = this.tokenizer.next()
         if (t.kind === TokenKind.Identifier) {
             let t1: Token = this.tokenizer.next()
-            if (t1.text === "(") {
-                let t2: Token = this.tokenizer.next()
-                while(t2.text !== ")") {
+            if (t1.text === '(') {
+                let t2:Token = this.tokenizer.next()
+                while(t2.text !== ')') {
                     if (t2.kind === TokenKind.StringLiteral) {
                         params.push(t2.text)
                     } else {
                         console.log("Expecting parameter in FunctionCall, while we got a " + t2.text);
-                        return;  //出错时，就不在错误处回溯了。
+                        return null; 
                     }
                     t2 = this.tokenizer.next()
-                    if (t2.text !== ")") {
-                        if (t2.text === ",") {
+                    if (t2.text !== ')') {
+                        if (t2.text == ',') {
                             t2 = this.tokenizer.next()
                         } else {
                             console.log("Expecting a comma in FunctionCall, while we got a " + t2.text);
-                            return;
+                            return null;
                         }
                     }
                 }
-                //消化掉一个分号：;
-                t2 = this.tokenizer.next();
-                if (t2.text === ";") {
+                t2 = this.tokenizer.next()
+                if (t2.text === ';') {
                     return new FunctionCall(t.text, params)
                 } else {
-                    console.log("Expecting a comma in FunctionCall, while we got a " + t2.text);
-                    return;
+                    console.log("Expecting a semicolon in FunctionCall, while we got a " + t2.text);
+                    return null;
                 }
             }
         }
-        //如果解析不成功，回溯，返回null。
-        this.tokenizer.traceBack(oldPos);
-        return null;
+        return null
     }
 }
 
@@ -506,13 +395,13 @@ class Intepretor extends AstVistor {
 
 /////////////////////////////////////////////////////////////////////////
 // 主程序
-function compileAndRun() {
+export function compileAndRun(progStr) {
     // 词法分析
-    let tokenizer = new Tokenizer(tokenArray)
-    console.log("\n程序所使用的Token")
-    for (let token of tokenArray) {
-        console.log(token)
-    }
+    let tokenizer = new Tokenizer(new CharStream(progStr))
+    // console.log("\n程序所使用的Token")
+    // for (let token of tokenArray) {
+    //     console.log(token)
+    // }
 
     // 语法分析
     let prog: Prog = new Parser(tokenizer).parseProg()
@@ -529,6 +418,3 @@ function compileAndRun() {
     let retVal = new Intepretor().visitProg(prog)
     console.log(`程序返回值：${retVal}`)
 }
-
-// 运行示例
-compileAndRun()
